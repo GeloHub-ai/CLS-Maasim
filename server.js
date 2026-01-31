@@ -2,7 +2,6 @@
 const express = require('express');
 const { Pool } = require('pg');
 const cors = require('cors');
-const path = require('path');
 
 const app = express();
 
@@ -119,20 +118,14 @@ app.delete('/api/:store/:id', async (req, res) => {
     }
 });
 
-// Root route for Vercel to prevent 'Cannot GET /'
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'index.html'));
-});
+// Export for Vercel Serverless Functions
+module.exports = app;
 
-// For local development
-if (!process.env.VERCEL) {
+// For local development only (Vercel ignores this block)
+if (!process.env.VERCEL && !process.env.NODE_ENV) {
     const PORT = process.env.PORT || 3001;
     app.listen(PORT, '0.0.0.0', () => {
         console.log(`\n--- LEGISLATIVE SYSTEM BACKEND ---`);
         console.log(`Status: Running on Port ${PORT}`);
-        console.log(`Mode:   ${isProduction ? 'PRODUCTION (ONLINE)' : 'DEVELOPMENT (LOCAL)'}`);
     });
 }
-
-// Export for Vercel Serverless Functions
-module.exports = app;
