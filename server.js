@@ -2,6 +2,7 @@
 const express = require('express');
 const { Pool } = require('pg');
 const cors = require('cors');
+const path = require('path');
 
 const app = express();
 
@@ -46,7 +47,7 @@ pool.connect((err, client, release) => {
         console.error('[ERROR] Could not connect to PostgreSQL:', err.message);
     } else {
         console.log('[SUCCESS] Legislative System Database: ONLINE');
-        release();
+        if (release) release();
         initDb();
     }
 });
@@ -118,9 +119,20 @@ app.delete('/api/:store/:id', async (req, res) => {
     }
 });
 
-const PORT = process.env.PORT || 3001;
-app.listen(PORT, '0.0.0.0', () => {
-    console.log(`\n--- LEGISLATIVE SYSTEM BACKEND ---`);
-    console.log(`Status: Running on Port ${PORT}`);
-    console.log(`Mode:   ${isProduction ? 'PRODUCTION (ONLINE)' : 'DEVELOPMENT (LOCAL)'}`);
+// Root route for Vercel to prevent 'Cannot GET /'
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'index.html'));
 });
+
+// For local development
+if (!process.env.VERCEL) {
+    const PORT = process.env.PORT || 3001;
+    app.listen(PORT, '0.0.0.0', () => {
+        console.log(`\n--- LEGISLATIVE SYSTEM BACKEND ---`);
+        console.log(`Status: Running on Port ${PORT}`);
+        console.log(`Mode:   ${isProduction ? 'PRODUCTION (ONLINE)' : 'DEVELOPMENT (LOCAL)'}`);
+    });
+}
+
+// Export for Vercel Serverless Functions
+module.exports = app;
