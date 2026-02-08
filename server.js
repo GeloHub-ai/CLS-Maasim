@@ -2,10 +2,19 @@
 const express = require('express');
 const { Pool } = require('pg');
 const cors = require('cors');
+const path = require('path');
+const fs = require('fs');
 
 const app = express();
 
-// 1. ONLINE-READY CORS POLICY
+// 1. MIME TYPE CONFIGURATION
+try {
+    express.static.mime.define({ 'application/javascript': ['tsx', 'ts'] });
+} catch (e) {
+    console.warn('[SYSTEM] MIME type definition warning:', e.message);
+}
+
+// 2. ONLINE-READY CORS POLICY
 app.use(cors({
     origin: true, 
     credentials: true,
@@ -15,12 +24,36 @@ app.use(cors({
 
 app.use(express.json({ limit: '100mb' }));
 
-// 2. DYNAMIC DATABASE CONNECTION
+// 3. STATIC FRONTEND FILES
+app.use(express.static(__dirname, {
+    setHeaders: (res, path) => {
+        if (path.endsWith('.tsx')) {
+            res.setHeader('Content-Type', 'application/javascript');
+        }
+        if (path.endsWith('.png')) {
+            res.setHeader('Cache-Control', 'public, max-age=86400');
+        }
+    }
+}));
+
+// 4. ROBUST ASSET SERVING FALLBACK
+app.get('/maasim-logo.png', (req, res) => {
+    const filePath = path.join(__dirname, 'maasim-logo.png');
+    if (fs.existsSync(filePath)) {
+        return res.sendFile(filePath);
+    }
+    res.status(404).send('Logo file not found.');
+});
+
+// 5. DYNAMIC DATABASE CONNECTION
 const isProduction = process.env.NODE_ENV === 'production';
 const connectionString = process.env.DATABASE_URL || 'postgresql://postgres:minad@127.0.0.1:5432/legislative_system';
 
 const pool = new Pool({
   connectionString: connectionString,
+  family: 4, 
+  connectionTimeoutMillis: 30000,
+  idleTimeoutMillis: 30000,
   ssl: isProduction ? { rejectUnauthorized: false } : false
 });
 
@@ -35,7 +68,7 @@ async function initDb() {
             );
             CREATE INDEX IF NOT EXISTS idx_store_name ON legislative_data(store_name);
         `);
-        console.log('[SYSTEM] Online Database Schema Verified.');
+        console.log('[SUCCESS] Online Database Schema Verified.');
     } catch (err) {
         console.error('[ERROR] Database Initialization:', err.message);
     }
@@ -45,39 +78,58 @@ pool.connect((err, client, release) => {
     if (err) {
         console.error('[ERROR] Could not connect to PostgreSQL:', err.message);
     } else {
-        console.log('[SUCCESS] Legislative System Database: ONLINE');
+        console.log('[SUCCESS] PostgreSQL Connected (IPv4 Mode)');
         if (release) release();
         initDb();
     }
 });
 
-// 3. MASTER BACKUP EXPORT
-app.get('/api/system/export', async (req, res) => {
+// 6. API ENDPOINTS
+
+app.get('/api/health', async (req, res) => {
     try {
-        const result = await pool.query('SELECT store_name, content FROM legislative_data');
-        const exportData = result.rows.reduce((acc, row) => {
-            if (!acc[row.store_name]) acc[row.store_name] = [];
-            acc[row.store_name].push(row.content);
-            return acc;
-        }, {});
-        
-        res.json({
-            version: "2.0",
-            timestamp: new Date().toISOString(),
-            data: exportData
-        });
+        await pool.query('SELECT 1');
+        res.json({ status: 'ok', database: 'connected', timestamp: new Date().toISOString() });
     } catch (err) {
-        res.status(500).json({ error: 'Export Failed' });
+        res.status(503).json({ status: 'error', database: 'disconnected', message: err.message });
     }
 });
 
-// 4. API ENDPOINTS
-app.get('/api/health', (req, res) => {
-    res.json({ 
-        status: 'ok', 
-        mode: isProduction ? 'cloud' : 'local',
-        timestamp: new Date().toISOString() 
-    });
+// SYSTEM EXPORT: Optimized for large data
+app.get('/api/system/export', async (req, res) => {
+    const startTime = Date.now();
+    try {
+        console.log('[SYSTEM] Initiating full system data export...');
+        
+        // Ensure table exists before querying
+        await initDb();
+
+        const result = await pool.query('SELECT store_name, content FROM legislative_data');
+        console.log(`[SYSTEM] Database fetched ${result.rowCount} items in ${Date.now() - startTime}ms.`);
+        
+        const exportData = {};
+        result.rows.forEach(row => {
+            if (!exportData[row.store_name]) exportData[row.store_name] = [];
+            exportData[row.store_name].push(row.content);
+        });
+
+        const finalPayload = {
+            version: "1.2-CLOUD-STABLE",
+            timestamp: new Date().toISOString(),
+            data: exportData,
+            recordCount: result.rowCount
+        };
+
+        console.log(`[SUCCESS] Backup serialization complete. Size: ${Math.round(JSON.stringify(finalPayload).length / 1024)} KB.`);
+        res.json(finalPayload);
+    } catch (err) {
+        console.error('[CRITICAL ERROR] Export Endpoint Failed:', err.stack);
+        res.status(500).json({ 
+            error: 'Export Failed', 
+            reason: err.message,
+            tip: 'Check if the database server has enough memory or if the table "legislative_data" exists.' 
+        });
+    }
 });
 
 app.get('/api/:store', async (req, res) => {
@@ -118,14 +170,17 @@ app.delete('/api/:store/:id', async (req, res) => {
     }
 });
 
-// Export for Vercel Serverless Functions
-module.exports = app;
+// 7. SPA CATCH-ALL ROUTE
+app.get('*', (req, res) => {
+    if (path.extname(req.path)) {
+        return res.status(404).send('Not Found');
+    }
+    res.sendFile(path.join(__dirname, 'index.html'));
+});
 
-// For local development only (Vercel ignores this block)
-if (!process.env.VERCEL && !process.env.NODE_ENV) {
-    const PORT = process.env.PORT || 3001;
-    app.listen(PORT, '0.0.0.0', () => {
-        console.log(`\n--- LEGISLATIVE SYSTEM BACKEND ---`);
-        console.log(`Status: Running on Port ${PORT}`);
-    });
-}
+const PORT = process.env.PORT || 3001;
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`\n--- BACKEND ACTIVE ON PORT ${PORT} ---`);
+});
+
+module.exports = app;
