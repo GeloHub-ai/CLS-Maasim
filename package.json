@@ -1,15 +1,11 @@
 
 {
   "name": "legislative-api-bridge",
-  "version": "1.1.0",
-  "description": "Cloud-ready server bridge for Computerized Legislative System",
+  "version": "1.0.0",
+  "description": "Server bridge for Computerized Legislative System",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "nodemon server.js"
-  },
-  "engines": {
-    "node": ">=18.0.0"
+    "start": "node server.js"
   },
   "dependencies": {
     "cors": "^2.8.5",
