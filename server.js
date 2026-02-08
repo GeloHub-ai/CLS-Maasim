@@ -7,7 +7,7 @@ const fs = require('fs');
 const os = require('os');
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 8080;
 
 // 1. MIME TYPE CONFIGURATION
 try {
@@ -165,6 +165,8 @@ app.listen(PORT, '0.0.0.0', async () => {
     console.log(`\x1b[34m║          LEGISLATIVE DATA BRIDGE SERVER IS RUNNING           ║\x1b[0m`);
     console.log(`\x1b[34m╚══════════════════════════════════════════════════════════════╝\x1b[0m`);
     
+    console.log(`\x1b[36m[SYSTEM]\x1b[0m Server listening on port: ${PORT}`);
+
     if (dbStatus.ok) {
         console.log(`\x1b[32m[SUCCESS]\x1b[0m Database Linked: ONLINE`);
     } else {
